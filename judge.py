@@ -45,7 +45,7 @@ DEFAULT_TIME_LIMIT = 2000
 
 CODE_COLORS = {
     'OK': 'green',
-    'TL': 'magenta',    
+    'TL': 'magenta',
     'ML': 'magenta',
     'IL': 'magenta',
     'WA': 'red',
@@ -93,14 +93,13 @@ class Judge():
         return self
 
     def __exit__(self, type, value, traceback):
-        if self.executable_file is not None and os.path.isfile(
-                self.executable_file):
+        if self.executable_file and os.path.isfile(self.executable_file):
             os.remove(self.executable_file)
 
-        if self.input_file is not None and os.path.isfile(self.input_file):
+        if self.input_file and os.path.isfile(self.input_file):
             os.remove(self.input_file)
 
-        if self.output_file is not None and os.path.isfile(self.output_file):
+        if self.output_file and os.path.isfile(self.output_file):
             os.remove(self.output_file)
         elif os.path.isfile('output'):
             os.remove('output')
@@ -118,9 +117,8 @@ class Judge():
                                           os.path.splitext(input_file)[0])
 
         command = str.format(compiler['options'], input_file)
-
         log("Executing command \"{0}\"", command)
-        p = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
+        p = subprocess.Popen(command.split())
         p.wait()
         log("Process finished with return code {0}.", p.returncode)
 
@@ -151,7 +149,7 @@ class Judge():
 
             command = [self.executable_file, self.runtime][self.interpreted]
             p = subprocess.Popen(command.split(), stdin=input_file,
-                stdout=output_file)
+                                 stdout=output_file)
             pp = psutil.Process(p.pid)
 
             start = time.clock()
@@ -237,7 +235,7 @@ class Judge():
                 if not ioi_mode:
                     self.report['outcome'] = {'code': 'WA', 'test': i}
                     return
-        
+
         if not ioi_mode:
             self.report['outcome'] = {'code': 'OK', 'test': -1}
 

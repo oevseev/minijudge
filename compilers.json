@@ -1,7 +1,21 @@
 {
-    "cpp11": {
-        "extensions": [".cpp"],
+    "clang-cpp": {
+        "extensions": [".cpp", ".c++"],
+        "options": "clang++ -O2 -Wall {0}",
+        "executable_file": "./a.out"
+    },
+    "clang-cpp11": {
+        "extensions": [".cpp", ".c++"],
         "options": "clang++ -O2 -Wall -std=c++11 {0}",
         "executable_file": "./a.out"
+    },
+    "fpc": {
+        "extensions": [".pas"],
+        "options": "fpc -O2 -vew {0}",
+        "executable_file": "{0}"
+    },
+    "python3": {
+        "extensions": [".py"],
+        "runtime": "python3 {0}"
     }
 }
