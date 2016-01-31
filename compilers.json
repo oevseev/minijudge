@@ -1,0 +1,7 @@
+{
+    "cpp11": {
+        "extensions": [".cpp"],
+        "options": "clang++ -O2 -Wall -std=c++11 {0}",
+        "executable_file": "./a.out"
+    }
+}
