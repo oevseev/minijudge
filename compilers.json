@@ -1,4 +1,14 @@
 {
+    "clang-c": {
+        "extensions": [".c"],
+        "options": "clang -O2 -Wall {0}",
+        "executable_file": "./a.out"
+    },
+    "clang-c11": {
+        "extensions": [".c"],
+        "options": "clang -O2 -Wall -std=c11 {0}",
+        "executable_file": "./a.out"
+    },
     "clang-cpp": {
         "extensions": [".cpp", ".c++"],
         "options": "clang++ -O2 -Wall {0}",
@@ -12,7 +22,13 @@
     "fpc": {
         "extensions": [".pas"],
         "options": "fpc -O2 -vew {0}",
-        "executable_file": "{0}"
+        "executable_file": "{1}"
+    },
+    "java": {
+        "extensions": [".java"],
+        "options": "javac {0}",
+        "executable_file": "{1}.class",
+        "runtime": "java -Xmx512M -Xss64M {1}"
     },
     "python3": {
         "extensions": [".py"],

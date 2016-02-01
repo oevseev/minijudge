@@ -40,17 +40,19 @@ import psutil
 import termcolor
 
 
-DEFAULT_MEMORY_LIMIT = 131072
+IDLENESS_THRESHOLD = 50.0
+DEFAULT_MEMORY_LIMIT = 262144
 DEFAULT_TIME_LIMIT = 2000
 
 CODE_COLORS = {
     'OK': 'green',
-    'TL': 'magenta',
-    'ML': 'magenta',
     'IL': 'magenta',
-    'WA': 'red',
-    'RT': 'red',
-    'CE': 'red'}
+    'ML': 'magenta',
+    'TL': 'magenta',
+    'CE': 'red',
+    'PE': 'red',
+    'RE': 'red',
+    'WA': 'red'}
 
 
 def log(message, *args, color='cyan'):
@@ -69,6 +71,10 @@ def log_outcome(report):
         log("{0}", code, color=CODE_COLORS[code])
 
 
+def format_command(command, filename):
+    return str.format(command, filename, os.path.splitext(filename)[0])
+
+
 class Judge():
     class MemoryLimitExceeded(Exception):
         pass
@@ -82,7 +88,6 @@ class Judge():
         self.input_file = input_file
         self.output_file = output_file
 
-        self.interpreted = False
         self.executable_file = None
         self.runtime = None
 
@@ -106,17 +111,18 @@ class Judge():
 
     def compile_file(self, input_file, compiler):
         if 'options' not in compiler:
-            self.runtime = str.format(compiler['runtime'], input_file)
-            self.interpreted = True
+            self.runtime = format_command(compiler['runtime'], input_file)
             self.ready = True
             return
 
-        # {0} in executable file setting means path to input file without
-        # its extension
-        self.executable_file = str.format(compiler['executable_file'],
-                                          os.path.splitext(input_file)[0])
+        # {0} in command is replaced by full filename, and {1} is replaced
+        # by filename without extension
+        self.executable_file = format_command(compiler['executable_file'],
+                                              input_file)
+        if 'runtime' in compiler:
+            self.runtime = format_command(compiler['runtime'], input_file)
 
-        command = str.format(compiler['options'], input_file)
+        command = format_command(compiler['options'], input_file)
         log("Executing command \"{0}\"", command)
         p = subprocess.Popen(command.split())
         p.wait()
@@ -127,7 +133,7 @@ class Judge():
         else:
             self.ready = True
 
-    def run(self, tests, path_to_checker, ioi_mode):
+    def run(self, ioi_mode, tests, path_to_checker):
         if not self.ready:
             return
 
@@ -138,19 +144,26 @@ class Judge():
         for i, test in enumerate(tests, 1):
             log("\nRunning on test #{0}...", i)
 
-            # Either way input is linked to a corresponding file
+            # Either way, input is linked to a corresponding file (or stdin)
             if self.input_file is None:
                 input_file = open(test, 'r')
             else:
                 shutil.copy(test, self.input_file)
 
+            # And output is routed to a generic file named "output" if no
+            # filename was specified.
             if self.output_file is None:
                 output_file = open('output', 'w')
 
-            command = [self.executable_file, self.runtime][self.interpreted]
+            # If specified, runtime command is preferred
+            command = self.executable_file
+            if self.runtime is not None:
+                command = self.runtime
+
             p = subprocess.Popen(command.split(), stdin=input_file,
                                  stdout=output_file)
             pp = psutil.Process(p.pid)
+            pp.cpu_percent()
 
             start = time.clock()
             time_elapsed, memory_used = 0, 0
@@ -171,27 +184,35 @@ class Judge():
                         raise Judge.MemoryLimitExceeded
 
             except Judge.TimeLimitExceeded:
+                description, code = "Time", 'TL'
+                if pp.cpu_percent() < IDLENESS_THRESHOLD:
+                    description, code = "Idleness", 'IL'
+
                 p.kill()
-                log("Time limit exceeded ({0} ms, {1} KB).", self.time_limit,
-                    memory_used, color=CODE_COLORS['TL'])
+
+                log("{2} limit exceeded ({0} ms, {1} KB).", self.time_limit,
+                    memory_used, description, color=CODE_COLORS[code])
                 self.report['test_data'].append({
-                    'code': 'TL',
+                    'code': code,
                     'time': self.time_limit,
                     'memory': memory_used
                 })
+
                 if not ioi_mode:
-                    self.report['outcome'] = {'code': 'TL', 'test': i}
+                    self.report['outcome'] = {'code': code, 'test': i}
                     halt = True
 
             except Judge.MemoryLimitExceeded:
                 p.kill()
                 log("Memory limit exceeded ({0} ms, {1} KB).", time_elapsed,
                     self.memory_limit, color=CODE_COLORS['ML'])
+
                 self.report['test_data'].append({
                     'code': 'ML',
                     'time': time_elapsed,
                     'memory': self.memory_limit
                 })
+
                 if not ioi_mode:
                     self.report['outcome'] = {'code': 'ML', 'test': i}
                     halt = True
@@ -207,6 +228,7 @@ class Judge():
             p.wait()
             log("Process terminated with code {0} ({1} ms, {2} KB).",
                 p.returncode, time_elapsed, memory_used)
+
             self.report['test_data'].append({
                 'code': 'OK',
                 'time': time_elapsed,
@@ -215,10 +237,11 @@ class Judge():
 
             # Any return code other than 0 is considered runtime error
             if p.returncode != 0:
-                log("Runtime error.", color=CODE_COLORS['RT'])
-                self.report['test_data'][-1]['code'] = 'RT'
+                log("Runtime error.", color=CODE_COLORS['RE'])
+                self.report['test_data'][-1]['code'] = 'RE'
+
                 if not ioi_mode:
-                    self.report['outcome'] = {'code': 'RT', 'test': i}
+                    self.report['outcome'] = {'code': 'RE', 'test': i}
                     return
 
             output_filename = self.output_file
@@ -230,11 +253,16 @@ class Judge():
             p = subprocess.Popen([path_to_checker, test, output_filename,
                                   test + '.a'])
             p.wait()
-            if p.returncode != 0:
-                self.report['test_data'][-1]['code'] = 'WA'
+            if p.returncode in (1, 2):
+                code = ['WA', 'PE'][p.returncode - 1]
+                self.report['test_data'][-1]['code'] = code
+
                 if not ioi_mode:
-                    self.report['outcome'] = {'code': 'WA', 'test': i}
+                    self.report['outcome'] = {'code': code, 'test': i}
                     return
+
+            elif p.returncode > 2:
+                fail("Unexpected verdict was issued.")
 
         if not ioi_mode:
             self.report['outcome'] = {'code': 'OK', 'test': -1}
@@ -247,14 +275,18 @@ def parse_args():
 
     parser.add_argument('file',
         help="file to test")
-    parser.add_argument('path_to_checker',
-        help="path to checker application. It must accept exactly three "
-        "arguments: path to input file, path to user output and path to jury "
-        "output.")
     parser.add_argument('test_dir',
         help="path to test directory. Each test in there should be labeled "
         "in accordance to their execution order. Input files should carry no "
         "extension and output file must have an .a extension.")
+    parser.add_argument('path_to_checker',
+        help="path to checker application. It must accept exactly three "
+        "arguments: path to input file, path to user output and path to jury "
+        "output.")
+
+    parser.add_argument('-c', '--compiler',
+        help="which compiler to use (guessed from extension by default; "
+        " however, it's recommended to always state it explicitly)")
 
     parser.add_argument('--ioi', action='store_true',
         help="enables IOI mode (execution is not aborted after one failed "
@@ -268,17 +300,18 @@ def parse_args():
         default=DEFAULT_TIME_LIMIT,
         help=str.format("time limit in milliseconds (default: {0})",
                         DEFAULT_TIME_LIMIT))
-    parser.add_argument('--input-file',
+    parser.add_argument('-i', '--input-file',
         help="name of the file that the program acquires input from "
         "(default: stdin)")
-    parser.add_argument('--output-file',
+    parser.add_argument('-o', '--output-file',
         help="name of the file that the program writes output to (default: "
         "stdout)")
 
-    parser.add_argument('-c', '--compiler',
-        help="which compiler to use (guessed from extension by default)")
-    parser.add_argument('-o', '--out',
-        help="path to output file")
+    parser.add_argument('--json', action='store_true',
+        help="enables JSON mode (standart output is silenced, only JSON "
+        "report is shown)")
+    parser.add_argument('--out',
+        help="path to output file (which JSON output will be written to)")
 
     return parser.parse_args()
 
@@ -314,14 +347,29 @@ def validate_args(args):
 
 
 def main(args):
+    location = os.path.realpath(
+        os.path.join(os.getcwd(), os.path.dirname(__file__)))
+
+    if args.json:
+        devnull = open(os.devnull, 'w')
+        sys.stdout = devnull
+
     # The only required file is the compiler configuration, and the abscence
     # of it results in an application error with code -1
-    if not os.path.isfile('compilers.json'):
+    compilers_path = os.path.join(location, 'compilers.json')
+    if not os.path.isfile(compilers_path):
         fail(-1, "\"compilers.json\" not found")
-    with open('compilers.json', 'r') as in_file:
+    with open(compilers_path, 'r') as in_file:
         compilers = json.load(in_file)
 
     validate_args(args)
+
+    # Converting the paths to absolute ones
+    args.file = os.path.abspath(args.file)
+    args.test_dir = os.path.abspath(args.test_dir)
+    args.path_to_checker = os.path.abspath(args.path_to_checker)
+    if args.out is not None:
+        args.out = os.path.abspath(args.out)
 
     # Changing the directory so that the executable file will be created in
     # the source file directory
@@ -356,7 +404,7 @@ def main(args):
     with Judge(args.memory_limit, args.time_limit,
                args.input_file, args.output_file) as judge:
         judge.compile_file(args.file, compilers[args.compiler])
-        judge.run(tests, args.path_to_checker, args.ioi)
+        judge.run(args.ioi, tests, args.path_to_checker)
 
         if args.out is not None:
             with open(args.out, 'w') as out_file:
@@ -364,6 +412,11 @@ def main(args):
 
         if 'outcome' in judge.report:
             log_outcome(judge.report)
+
+        if args.json:
+            sys.stdout.close()
+            sys.stdout = sys.__stdout__
+            print(json.dumps(judge.report))
 
 
 if __name__ == '__main__':
