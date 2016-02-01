@@ -262,7 +262,7 @@ class Judge():
                     return
 
             elif p.returncode > 2:
-                fail("Unexpected verdict was issued.")
+                fail(5, "Unexpected verdict was issued.")
 
         if not ioi_mode:
             self.report['outcome'] = {'code': 'OK', 'test': -1}
