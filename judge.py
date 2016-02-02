@@ -143,6 +143,7 @@ class Judge():
 
         for i, test in enumerate(tests, 1):
             log("\nRunning on test #{0}...", i)
+            skip = False
 
             # Either way, input is linked to a corresponding file (or stdin)
             if self.input_file is None:
@@ -163,7 +164,13 @@ class Judge():
             p = subprocess.Popen(command.split(), stdin=input_file,
                                  stdout=output_file)
             pp = psutil.Process(p.pid)
-            pp.cpu_percent()
+
+            # It shouldn't affect IL checking as the code has finished running
+            # by the time when exception is raised
+            try:
+                pp.cpu_percent()
+            except psutil.AccessDenied:
+                pass
 
             start = time.clock()
             time_elapsed, memory_used = 0, 0
@@ -202,6 +209,8 @@ class Judge():
                     self.report['outcome'] = {'code': code, 'test': i}
                     halt = True
 
+                skip = True
+
             except Judge.MemoryLimitExceeded:
                 p.kill()
                 log("Memory limit exceeded ({0} ms, {1} KB).", time_elapsed,
@@ -217,6 +226,8 @@ class Judge():
                     self.report['outcome'] = {'code': 'ML', 'test': i}
                     halt = True
 
+                skip = True
+
             finally:
                 if input_file is not None:
                     input_file.close()
@@ -224,6 +235,9 @@ class Judge():
                     output_file.close()
                 if halt:
                     return
+
+            if skip:
+                continue
 
             p.wait()
             log("Process terminated with code {0} ({1} ms, {2} KB).",
@@ -237,12 +251,14 @@ class Judge():
 
             # Any return code other than 0 is considered runtime error
             if p.returncode != 0:
-                log("Runtime error.", color=CODE_COLORS['RE'])
+                log("Runtime error occured.", color=CODE_COLORS['RE'])
                 self.report['test_data'][-1]['code'] = 'RE'
 
                 if not ioi_mode:
                     self.report['outcome'] = {'code': 'RE', 'test': i}
                     return
+
+                continue
 
             output_filename = self.output_file
             if output_filename is None:
@@ -255,6 +271,11 @@ class Judge():
             p.wait()
             if p.returncode in (1, 2):
                 code = ['WA', 'PE'][p.returncode - 1]
+                description = ['wrong answer', 'presentation error'][
+                    p.returncode - 1]
+                log("Test not passed: {0}.", description,
+                    color=CODE_COLORS[code])
+
                 self.report['test_data'][-1]['code'] = code
 
                 if not ioi_mode:
@@ -263,6 +284,9 @@ class Judge():
 
             elif p.returncode > 2:
                 fail(5, "Unexpected verdict was issued.")
+
+            else:
+                log("Test passed.", color=CODE_COLORS['OK'])
 
         if not ioi_mode:
             self.report['outcome'] = {'code': 'OK', 'test': -1}
