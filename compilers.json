@@ -24,6 +24,12 @@
         "options": "fpc -O2 -vew {0}",
         "executable_file": "{1}"
     },
+    "mono": {
+        "extensions": [".cs"],
+        "options": "mcs {0}",
+        "executable_file": "{1}.exe",
+        "runtime": "mono {0}"
+    },
     "java": {
         "extensions": [".java"],
         "options": "javac {0}",

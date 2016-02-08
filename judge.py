@@ -120,7 +120,8 @@ class Judge():
         self.executable_file = format_command(compiler['executable_file'],
                                               input_file)
         if 'runtime' in compiler:
-            self.runtime = format_command(compiler['runtime'], input_file)
+            self.runtime = format_command(compiler['runtime'],
+                                          self.executable_file)
 
         command = format_command(compiler['options'], input_file)
         log("Executing command \"{0}\"", command)
