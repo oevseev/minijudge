@@ -302,8 +302,8 @@ def parse_args():
         help="file to test")
     parser.add_argument('test_dir',
         help="path to test directory. Each test in there should be labeled "
-        "in accordance to their execution order. Input files should carry no "
-        "extension and output file must have an .a extension.")
+        "in accordance to its execution order. Input files should have no "
+        "extension and output file must feature an .a extension.")
     parser.add_argument('path_to_checker',
         help="path to checker application. It must accept exactly three "
         "arguments: path to input file, path to user output and path to jury "
@@ -336,7 +336,7 @@ def parse_args():
         help="enables JSON mode (standart output is silenced, only JSON "
         "report is shown)")
     parser.add_argument('--out',
-        help="path to output file (which JSON output will be written to)")
+        help="path to output file (into which JSON output will be written)")
 
     return parser.parse_args()
 
@@ -376,8 +376,7 @@ def main(args):
         os.path.join(os.getcwd(), os.path.dirname(__file__)))
 
     if args.json:
-        devnull = open(os.devnull, 'w')
-        sys.stdout = devnull
+        sys.stdout = open(os.devnull, 'w')
 
     # The only required file is the compiler configuration, and the abscence
     # of it results in an application error with code -1
@@ -390,50 +389,51 @@ def main(args):
     validate_args(args)
 
     # Converting the paths to absolute ones
-    args.file = os.path.abspath(args.file)
-    args.test_dir = os.path.abspath(args.test_dir)
-    args.path_to_checker = os.path.abspath(args.path_to_checker)
-    if args.out is not None:
-        args.out = os.path.abspath(args.out)
+    program_file = os.path.abspath(args.file)
+    test_dir = os.path.abspath(args.test_dir)
+    path_to_checker = os.path.abspath(args.path_to_checker)
+    out_file = os.path.abspath(args.out) if args.out is not None else None
 
     # Changing the directory so that the executable file will be created in
     # the source file directory
-    os.chdir(os.path.dirname(args.file))
+    os.chdir(os.path.dirname(program_file))
 
     # Deducing compiler by extension if not specified
-    if args.compiler is None:
-        extension = os.path.splitext(args.file)[1]
+    compiler = args.compiler
+
+    if compiler is None:
+        extension = os.path.splitext(program_file)[1]
 
         # The first compiler that matches the extension will be used to
         # compile the file. But, due to Python's dictionary implementation,
         # it's not guaranteed that it would be the same as the one that
         # appears first in the file, so it's strongly recommended that the
         # compiler should be specified explicitly.
-        for compiler, data in compilers.items():
+        for c, data in compilers.items():
             if extension in data['extensions']:
-                args.compiler = compiler
+                compiler = c
 
-        if args.compiler is None:
+        if compiler is None:
             fail(4, "No compilers found that match the extension")
 
     # Searching for infile/outfile pairs in test directory and then sorting
     # them naturally
-    tests = [os.path.join(args.test_dir, x) for x in os.listdir(args.test_dir)
-             if '.' not in x and os.path.isfile(os.path.join(args.test_dir,
+    tests = [os.path.join(test_dir, x) for x in os.listdir(test_dir)
+             if '.' not in x and os.path.isfile(os.path.join(test_dir,
              x + '.a'))]
     tests = natsort.natsorted(tests)
 
     # The judge object in conjunction with "with" statement sandboxes the
     # testing process. It's not enough to prevent the malitious code from
-    # doing very bad things, hovewer!
+    # doing very bad things, however!
     with Judge(args.memory_limit, args.time_limit,
                args.input_file, args.output_file) as judge:
-        judge.compile_file(args.file, compilers[args.compiler])
-        judge.run(args.ioi, tests, args.path_to_checker)
+        judge.compile_file(program_file, compilers[compiler])
+        judge.run(args.ioi, tests, path_to_checker)
 
-        if args.out is not None:
-            with open(args.out, 'w') as out_file:
-                json.dump(judge.report, out_file)
+        if out_file is not None:
+            with open(out_file, 'w') as of:
+                json.dump(judge.report, of)
 
         if 'outcome' in judge.report:
             log_outcome(judge.report)

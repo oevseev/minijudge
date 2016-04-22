@@ -1,0 +1,5 @@
+.DS_Store
+
+# I find it useful to store testlib.h in the minijudge directory.
+# (it also may come in handy in future)
+testlib.h
